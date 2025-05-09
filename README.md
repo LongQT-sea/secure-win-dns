@@ -46,21 +46,15 @@ Once installed, the script configures your system to use the local DNS server pr
 
 ## 🔄 Uninstallation
 
-To remove Dnsproxy:
-
-1. Open **Task Scheduler**.
-2. Delete the task named: `Start Dnsproxy at startup`.
-3. Go to **Settings > Apps > Installed apps**.
-4. Search for `AdGuard.dnsproxy` and uninstall it.
-
-Or use this PowerShell command:
-
+Run the following command in **PowerShell** or **Terminal** (run as administrator):
 ```powershell
+$name = "Start Dnsproxy at startup"
+Stop-ScheduledTask -TaskName $name
+Unregister-ScheduledTask -TaskName $name
 winget remove AdGuard.dnsproxy
 ```
 
-Then reset your DNS settings with this command (run as administrator):
-
+Then reset your DNS settings with this command:
 ```powershell
 $targets = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.Name -like 'Ethernet*' -or $_.Name -like 'Wi-Fi*') }
 
