@@ -34,7 +34,7 @@ Once installed, the script configures your system to use the local DNS server pr
 
    * Listens on `127.0.0.1` and `::1` (IPv4 & IPv6).
    * Binds to port `53` (standard DNS port).
-   * Uses **AdGuard DoH/DoQ** as upstream resolvers.
+   * Uses **AdGuard DoH/DoQ** as upstream resolvers to block ads.
    * Enables DNS caching for faster performance.
 
 ## 📋 Requirements
@@ -50,7 +50,7 @@ Run the following command in **PowerShell** or **Terminal** (run as administrato
 ```powershell
 $name = "Start Dnsproxy at startup"
 Stop-ScheduledTask -TaskName $name
-Unregister-ScheduledTask -TaskName $name
+Unregister-ScheduledTask -TaskName $name -Confirm:$false
 winget remove AdGuard.dnsproxy
 ```
 

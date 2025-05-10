@@ -1,5 +1,6 @@
 # A simple powershell script used to install Adguard Dnsproxy and add it to startup with Task Scheduled
 # Author: github.com/longqt-sea
+$ErrorActionPreference = "SilentlyContinue"
 
 # Check if the script is running with administrator privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -12,39 +13,55 @@ if (-not ($isAdmin)) {
     exit 1
 }
 
-# Check if winget is available
-while (-not (gcm winget -ErrorAction SilentlyContinue)) {
-    Write-Host "`nThe 'winget' command is unavailable. Please update 'App Installer' through Microsoft Store and then press Enter to continue."
-    Write-Host "`nMicrosoft Store will open automatically in 5 seconds." -NoNewline
-    sleep 5
-    Start-Process "ms-windows-store://pdp?hl=en-us&gl=us&productid=9nblggh4nns1"
-    $null = Read-Host
-}
+function Install-dnsproxy {
+    if (gcm dnsproxy) {
+        Write-Host "`nDnsproxy is already installed, skip installing"
+        return $true
+    }
 
-# Update winget sources
-Write-Host "Updating winget sources..."
-winget source update --disable-interactivity
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`nFailed to update Winget sources! Press Enter to exit" -NoNewline
-    $null = Read-Host
-    exit 1
-}
-
-# Install AdGuard.dnsproxy
-Write-Host "`nInstalling AdGuard.dnsproxy using Winget..."
-winget install --id=AdGuard.dnsproxy --accept-package-agreements --accept-source-agreements --disable-interactivity --scope user
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "`nDnsproxy was installed successfully!"
-    Write-Host "`nAdding dnsproxy to startup with Scheduled Task"
-    $name = "Start Dnsproxy at startup"
-    $dnsproxyPath = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\AdGuard.dnsproxy_*\*\dnsproxy.exe"
-    $dnsproxyPath = Resolve-Path $dnsproxyPath -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path
-
-    if (-not $dnsproxyPath) {
-        Write-Host "`nFailed to locate dnsproxy.exe. Press Enter to exit" -NoNewline
+    # Check if winget is available
+    while (-not (gcm winget)) {
+        Write-Host "`nThe 'winget' command is unavailable. Please update 'App Installer' through Microsoft Store and then press Enter to continue."
+        Write-Host "`nMicrosoft Store will open automatically in 5 seconds." -NoNewline
+        sleep 5
+        Start-Process "ms-windows-store://pdp?hl=en-us&gl=us&productid=9nblggh4nns1"
         $null = Read-Host
-        exit 1
+    }
+
+    # Update winget sources
+    Write-Host "Updating winget sources..."
+    winget source update --disable-interactivity
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host -b black -f yellow "`nFailed to update Winget sources!" -NoNewline
+        $null = Read-Host
+        return $false
+    }
+
+    # Install AdGuard.dnsproxy
+    Write-Host "`nInstalling AdGuard.dnsproxy using Winget..."
+    winget install --id=AdGuard.dnsproxy --accept-package-agreements --accept-source-agreements --disable-interactivity --scope user
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "`nFailed to install dnsproxy!"
+        return $false
+    } else {
+        Write-Host "`nDnsproxy was installed successfully!"
+        return $true
+    }
+}
+
+function Add-ScheduledTask {
+    $name = "Start Dnsproxy at startup"
+    if (Get-ScheduledTask -TaskName $name) {
+        Write-Host "`nA Scheduled Task name $name already exist, skipping"
+        return $true
+    }
+
+    Write-Host "`nAdding dnsproxy to startup with Scheduled Task"
+    $dnsproxyPath = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter "dnsproxy.exe" | Select-Object -First 1 -ExpandProperty FullName
+    if (-not $dnsproxyPath) {
+        Write-Host "`nFailed to locate dnsproxy.exe."
+        return $false
     }
 
     # Use Adguard DNS to block ads
@@ -67,27 +84,26 @@ if ($LASTEXITCODE -eq 0) {
     Register-ScheduledTask -TaskName $name -Trigger $trigger -User $user -Action $action -Settings $settings
     Start-ScheduledTask $name
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "`nScheduled Task added and started successfully!"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "`nScheduled Task added, but failed to start. Check if another DNS server is already running on localhost."
+        return $false
     } else {
-        Write-Host "`nScheduled Task added, but failed to start. Check if another DNS server is already running on localhost. Press Enter to exit." -NoNewline
-        $null = Read-Host
-        exit 1
+        Write-Host "`nScheduled Task added and started successfully!"
+        return $true
     }
+}
 
-    $targets = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.Name -like 'Ethernet*' -or $_.Name -like 'Wi-Fi*') }
-
-    foreach ($adapter in $targets) {
-        Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("127.0.0.1", "::1")
-        Write-Host "`nSet DNS for '$($adapter.Name)' to use dnsproxy at localhost successfully."
+if (Install-dnsproxy) {
+    if (Add-ScheduledTask) {
+        $targets = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and ($_.Name -like 'Ethernet*' -or $_.Name -like 'Wi-Fi*') }
+        foreach ($adapter in $targets) {
+            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses @("127.0.0.1", "::1")
+            Write-Host "`nSet DNS for '$($adapter.Name)' to use dnsproxy at localhost successfully."
+        }
     }
-} else {
-    Write-Host "`nFailed to install dnsproxy! Press Enter to exit" -NoNewline
-    $null = Read-Host
-    exit 1
 }
 
 Write-Host -b black -f green "`nOperation completed. Press Enter to exit." -NoNewLine
 $Host.UI.RawUI.FlushInputBuffer()
 $null = Read-Host
-exit 0
+exit
