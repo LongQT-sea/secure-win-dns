@@ -32,8 +32,7 @@ function Install-dnsproxy {
     Write-Host "Updating winget sources..."
     winget source update --disable-interactivity
     if ($LASTEXITCODE -ne 0) {
-        Write-Host -b black -f yellow "`nFailed to update Winget sources!" -NoNewline
-        $null = Read-Host
+        Write-Host -b black -f yellow "`nFailed to update Winget sources!"
         return $false
     }
 
